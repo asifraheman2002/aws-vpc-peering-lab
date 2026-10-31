@@ -1,253 +1,437 @@
-# AWS VPC Peering Lab --- EWB AWS Networking
+# AWS VPC Peering & Private Network Connectivity
 
-**Author:** SK Asif Raheman\
-**AWS Region:** `ap-south-1` (Mumbai)\
-**Project status:** Lab completed; AWS resources were destroyed after
-testing.
+**Internship Project Submission | AWS Networking | Terraform | Linux**
 
-## 1. Overview
+![AWS](https://img.shields.io/badge/Cloud-AWS-orange?style=flat-square&logo=amazonaws)
+![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC?style=flat-square&logo=terraform)
+![Networking](https://img.shields.io/badge/Domain-Cloud%20Networking-blue?style=flat-square)
+![Status](https://img.shields.io/badge/Infrastructure-Destroyed-success?style=flat-square)
 
-I built this lab to practise private connectivity between two Amazon
-VPCs using VPC Peering. VPC-A contains a public bastion host and a
-private App-A instance. VPC-B contains a private App-B instance. I
-configured routing and security-group rules, then tested SSH and ICMP
-connectivity using private IP addresses.
+![AWS VPC Peering Architecture](Screenshots/AWS_VPC_Peering_Architecture.png)
 
-> **Important:** Screenshots show the environment during the lab, not currently running resources. Never commit private keys, credentials, Terraform state files, or secrets.
+## 1. Project Overview
 
-## 2. Network design
+This project demonstrates the design, deployment, configuration, and validation of private network connectivity between two isolated Amazon Virtual Private Clouds (VPCs) using **AWS VPC Peering**.
 
-  Component              CIDR / private IP   Purpose
-  ---------------------- ------------------- -------------------------------
-  VPC-A                  `10.10.0.0/16`      Bastion and App-A network
-  VPC-A public subnet    `10.10.1.0/24`      Bastion subnet
-  VPC-A private subnet   `10.10.2.0/24`      App-A subnet
-  VPC-B                  `10.20.0.0/16`      Peered VPC
-  VPC-B private subnet   `10.20.1.0/24`      App-B subnet
-  Bastion                `10.10.1.10`        Public SSH entry point
-  App-A                  `10.10.2.10`        Private EC2 instance in VPC-A
-  App-B                  `10.20.1.10`        Private EC2 instance in VPC-B
+The infrastructure was provisioned using Terraform in the AWS Mumbai region. A Bastion Host was deployed in a public subnet to provide controlled SSH access to application instances hosted in private subnets.
 
-App-A and App-B were configured without public IP addresses. The
-Internet Gateway was attached to VPC-A.
+The project focused on practical cloud networking concepts, including CIDR planning, subnet architecture, route table configuration, security group management, private communication, connectivity testing, and infrastructure cleanup.
 
-## 3. Route tables
+**Project objective:** Establish secure, bidirectional communication between two VPCs without exposing application instances directly to the public internet.
 
-  Route table     Subnet association   Destination      Target
-  --------------- -------------------- ---------------- ------------------
-  VPC-A public    `10.10.1.0/24`       `10.10.0.0/16`   `local`
-  VPC-A public    `10.10.1.0/24`       `0.0.0.0/0`      Internet Gateway
-  VPC-A private   `10.10.2.0/24`       `10.10.0.0/16`   `local`
-  VPC-A private   `10.10.2.0/24`       `10.20.0.0/16`   VPC Peering
-  VPC-B private   `10.20.1.0/24`       `10.20.0.0/16`   `local`
-  VPC-B private   `10.20.1.0/24`       `10.10.0.0/16`   VPC Peering
+## 2. Business Scenario
 
-VPC Peering does not automatically add routes. Both VPCs need a route to
-the other VPC's CIDR through the peering connection.
+Consider an organization operating two separate application environments:
 
-## 4. Forward and return paths
+- **Environment A:** Hosts an application server inside a private subnet.
+- **Environment B:** Hosts another application server inside a separate VPC.
+- Both environments need private network communication.
+- Application servers must not have public IP addresses.
+- Administrative access must be controlled through a Bastion Host.
 
-**Forward path --- App-A → App-B:** App-A (`10.10.2.10`) sends traffic
-to App-B (`10.20.1.10`). VPC-A's private route table matches
-`10.20.0.0/16` and sends the traffic through the peering connection.
-VPC-B's local route delivers it to App-B if security rules allow it.
+The objective is to connect both environments securely without routing application traffic over the public internet.
 
-**Return path --- App-B → App-A:** App-B (`10.20.1.10`) sends the reply
-to App-A (`10.10.2.10`). VPC-B's private route table matches
-`10.10.0.0/16` and sends traffic through the peering connection. VPC-A's
-local route delivers it to App-A. Both routes and relevant security
-rules are required.
+AWS VPC Peering was selected to establish private communication between the two networks.
 
-## 5. Security approach
+## 3. Technology Stack
 
--   Bastion SSH access was restricted to the client public IPv4 address
-    using `/32`.
--   Private-instance SSH access was tested through the intended
-    bastion/SSH path.
--   Connectivity tests used private destination IPs.
--   ICMP rules were changed for the controlled failure/recovery test.
--   Refer to the screenshots below for the exact security-group rules
-    used during the lab.
+| Category | Technology |
+|---|---|
+| Cloud Platform | AWS |
+| Networking | Amazon VPC, VPC Peering |
+| Compute | Amazon EC2 |
+| Network Security | Security Groups |
+| Routing | Route Tables, Internet Gateway |
+| Infrastructure as Code | Terraform |
+| Administration | Linux, SSH |
+| Connectivity Testing | ICMP, Ping |
+| Region | ap-south-1 (Mumbai) |
 
-## 6. Screenshot evidence
+## 4. Network Architecture
 
-All paths below use the exact filenames shown in the `Screenshots/`
-folder. **Do not rename these files without updating the corresponding
-Markdown links.** Click each link to open its image.
+### VPC-A — Environment A
 
-### Network and resources
+- VPC CIDR: `10.10.0.0/16`
+- Public subnet: `10.10.1.0/24`
+- Private subnet: `10.10.2.0/24`
+- Bastion Host: `10.10.1.10`
+- Application Server A: `10.10.2.10`
 
-  -------------------------------------------------------------------------------------
-  Screenshot                                        Evidence
-  ------------------------------------------------- -----------------------------------
-  [SS01 --- VPC                                     VPC CIDR ranges
-  CIDRs](Screenshots/SS01_VPCs_CIDRs.png)           
+### VPC-B — Environment B
 
-  [SS02 --- Route                                   Route configuration
-  tables](Screenshots/SS02_Routes.png)              
+- VPC CIDR: `10.20.0.0/16`
+- Private subnet: `10.20.1.0/24`
+- Application Server B: `10.20.1.10`
 
-  [SS03A --- EC2                                    EC2 inventory during the lab
-  instances](Screenshots/SS03A_EC2_Instances.png)   
+### Connectivity Design
 
-  [SS03B --- App-A has no public                    App-A public-IP check
-  IP](Screenshots/SS03B_AppA_No_Public_IP.png)      
+- VPC-A and VPC-B are connected through VPC Peering.
+- An Internet Gateway provides internet connectivity to the public subnet in VPC-A.
+- Private application instances do not have public IP addresses.
+- The Bastion Host acts as the administrative entry point.
+- Route tables provide bidirectional private network routing.
 
-  [SS03C --- App-B has no public                    App-B public-IP check
-  IP](Screenshots/SS03C_AppB_No_Public_IP.png)      
+### Architecture Evidence
 
-  [SS04 --- Active VPC                              Peering status during the lab
-  Peering](Screenshots/SS04_Peering_Active.png)     
-  -------------------------------------------------------------------------------------
+![VPC Configuration](Screenshots/SS01_VPCs_CIDRs.png)
 
-### Security and connectivity
+## 5. Implementation Methodology
 
-  --------------------------------------------------------------------------------------------
-  Screenshot                                               Evidence
-  -------------------------------------------------------- -----------------------------------
-  [SS05A --- Bastion security                              Bastion inbound rules
-  group](Screenshots/SS05A_Bastion_SG.png)                 
+### Phase 1 — VPC and Subnet Provisioning
 
-  [SS05B --- App-A security                                App-A inbound rules
-  group](Screenshots/SS05B_AppA_SG.png)                    
+Created two isolated VPCs with non-overlapping CIDR ranges.
 
-  [SS05C --- App-B security                                App-B inbound rules
-  group](Screenshots/SS05C_AppB_SG.png)                    
+Configured:
+- VPC-A and VPC-B.
+- Public subnet in VPC-A.
+- Private subnets in both VPCs.
+- Internet Gateway attached to VPC-A.
 
-  [SS06 --- Bastion SSH                                    SSH to bastion
-  success](Screenshots/SS06_Bastion_SSH_Success.png)       
+**Evidence:**
 
-  [SS07 --- App-A SSH                                      SSH to App-A
-  success](Screenshots/SS07_AppA_SSH_Success.png)          
+![VPC Configuration](Screenshots/SS01_VPCs_CIDRs.png)
 
-  [SS07 --- Forward ping, App-A →                          Ping from App-A to App-B
-  App-B](Screenshots/SS07_AppA_To_AppB_Ping.png)           
+### Phase 2 — Route Table Configuration
 
-  [SS08 --- App-B SSH                                      SSH to App-B
-  success](Screenshots/SS08_AppB_SSH_Success.png)          
+Configured routing for internet access and private communication.
 
-  [SS08 --- Reverse ping, App-B →                          Ping from App-B to App-A
-  App-A](Screenshots/SS08_AppB_To_AppA_Ping.png)           
+**VPC-A Public Route Table**
+- Local route: `10.10.0.0/16`
+- Internet route: `0.0.0.0/0` through Internet Gateway.
 
-  [SS09 --- Controlled ICMP                                Negative connectivity test
-  failure](Screenshots/SS09_Controlled_ICMP_Failure.png)   
+**VPC-A Private Route Table**
+- Local route: `10.10.0.0/16`
+- Peering route: `10.20.0.0/16`
 
-  [SS10 --- ICMP                                           Recovery test after restoring ICMP
-  recovery](Screenshots/SS10_ICMP_Recovery.png)            access
-  --------------------------------------------------------------------------------------------
+**VPC-B Private Route Table**
+- Local route: `10.20.0.0/16`
+- Peering route: `10.10.0.0/16`
 
-### Cleanup and extra evidence
+Both sides require appropriate routes for bidirectional connectivity.
 
-  --------------------------------------------------------------------------------------------------------------------------------------
-  Screenshot                                                                                         Evidence
-  -------------------------------------------------------------------------------------------------- -----------------------------------
-  [Cleanup --- Terraform destroy                                                                     Terraform cleanup output
-  completed](Screenshots/Cleanup%20verification%20%E2%80%94%20Terraform%20destroy%20completed.png)   
+**Evidence:**
 
-  [Additional screenshot --- 2026-10-28](Screenshots/Screenshot%202026-10-28%20194703.png)           Additional captured evidence;
-                                                                                                     inspect the image for its specific
-                                                                                                     context
-  --------------------------------------------------------------------------------------------------------------------------------------
+![Route Tables](Screenshots/SS02_Routes.png)
 
-**Evidence labelling:** Each screenshot should identify the host,
-command/test or console view, and observed result. Do not claim a test
-succeeded unless the screenshot demonstrates it.
+### Phase 3 — EC2 Instance Deployment
 
-## 7. Terraform files and GitHub safety
+Deployed three EC2 instances:
 
-  -----------------------------------------------------------------------
-  File                                Guidance
-  ----------------------------------- -----------------------------------
-  `main.tf`                           Commit after checking for hardcoded
-                                      secrets
+1. Bastion Host in the public subnet.
+2. Application Server A in VPC-A's private subnet.
+3. Application Server B in VPC-B's private subnet.
 
-  `.terraform.lock.hcl`               Commit
+Verified that both application instances had private IP addresses and no public IP addresses.
 
-  `.gitignore`                        Commit
+**Evidence:**
 
-  `.terraform/`                       Do not commit
+![EC2 Instances](Screenshots/SS03A_EC2_Instances.png)
 
-  `terraform.tfstate` and backups     **Do not commit**; may contain
-                                      sensitive values
+**Application Server A:**
 
-  `ewb-lab.pem`                       **Never commit**; private SSH key
-  -----------------------------------------------------------------------
+![Application A](Screenshots/SS03B_AppA_No_Public_IP.png)
 
-Suggested `.gitignore`:
+**Application Server B:**
 
-``` gitignore
-.terraform/
-*.tfstate
-*.tfstate.*
-crash.log
-crash.*.log
-*.tfvars
-*.tfvars.json
-override.tf
-override.tf.json
-*_override.tf
-*_override.tf.json
-*.pem
-*.key
-.terraformrc
-terraform.rc
-.DS_Store
-Thumbs.db
-.vscode/
+![Application B](Screenshots/SS03C_AppB_No_Public_IP.png)
+
+### Phase 4 — VPC Peering Configuration
+
+Established the VPC Peering connection between VPC-A and VPC-B.
+
+Verified that the peering connection reached the active state.
+
+**Evidence:**
+
+![VPC Peering Active](Screenshots/SS04_Peering_Active.png)
+
+### Phase 5 — Security Group Configuration
+
+Configured security groups to control administrative access and application-level network communication.
+
+**Bastion Host**
+- SSH access restricted to the administrator's permitted public IP address.
+
+**Application Server A**
+- SSH access through the Bastion Host.
+- ICMP access according to the configured connectivity requirements.
+
+**Application Server B**
+- SSH access through the Bastion Host.
+- ICMP access according to the configured connectivity requirements.
+
+**Evidence:**
+
+![Bastion Security Group](Screenshots/SS05A_Bastion_SG.png)
+
+![Application A Security Group](Screenshots/SS05B_AppA_SG.png)
+
+![Application B Security Group](Screenshots/SS05C_AppB_SG.png)
+
+### Phase 6 — SSH Access Validation
+
+Verified administrative access to the Bastion Host and private application instances.
+
+**Bastion Host:**
+
+![Bastion SSH](Screenshots/SS06_Bastion_SSH_Success.png)
+
+**Application Server A:**
+
+![App A SSH](Screenshots/SS07_AppA_SSH_Success.png)
+
+**Application Server B:**
+
+![App B SSH](Screenshots/SS08_AppB_SSH_Success.png)
+
+### Phase 7 — Private Network Connectivity Testing
+
+Tested private communication between application instances in both directions.
+
+**Forward Connectivity: Application A → Application B**
+
+![App A to App B](Screenshots/SS07_AppA_To_AppB_Ping.png)
+
+**Reverse Connectivity: Application B → Application A**
+
+![App B to App A](Screenshots/SS08_AppB_To_AppA_Ping.png)
+
+Successful bidirectional communication demonstrated that the required peering routes and ICMP security group permissions were configured for the tested traffic.
+
+## 6. Troubleshooting and Root Cause Analysis
+
+This section separates the controlled troubleshooting demonstrated in the lab from additional scenarios for further hands-on practice.
+
+### 6.1 Implemented and Verified — ICMP Connectivity Failure
+
+**Problem:** ICMP communication between the application instances was intentionally interrupted by modifying the relevant security group rule.
+
+**Troubleshooting approach:**
+1. Tested connectivity using ping.
+2. Checked the security group ICMP rule.
+3. Identified the missing or modified permission.
+4. Restored the required ICMP rule.
+5. Retested communication.
+
+**Result:** Connectivity was restored after correcting the security group configuration.
+
+**Failure evidence:**
+
+![Controlled ICMP Failure](Screenshots/SS09_Controlled_ICMP_Failure.png)
+
+**Recovery evidence:**
+
+![ICMP Recovery](Screenshots/SS10_ICMP_Recovery.png)
+
+### 6.2 Additional Troubleshooting Scenarios — Practice Before Claiming as Completed
+
+The following are realistic AWS networking failure scenarios relevant to this architecture. They are included as technical learning and interview preparation scenarios, not as completed project tests.
+
+**Scenario A — VPC Peering Connection Not Active**
+
+Possible symptoms:
+- Instances cannot communicate across VPCs.
+- Peering connection is pending acceptance or failed.
+
+Investigation:
+- Check the peering connection status.
+- Verify the requester and accepter VPC IDs.
+- Confirm that the connection has been accepted.
+
+Useful command:
+
+```bash
+aws ec2 describe-vpc-peering-connections \
+  --region ap-south-1
 ```
 
-If a private key or state file has already been committed, `.gitignore`
-alone does not remove it from Git history or tracking. Remove it from
-tracking and rotate any exposed credentials as appropriate.
+Expected resolution: Accept the peering connection when required and verify that its status is `active`.
 
-## 8. Cleanup
+**Scenario B — Missing Route Table Entry**
 
-After testing, I ran `terraform destroy` to remove the lab resources.
-The cleanup screenshot is linked above. Resource IDs and console states
-shown in screenshots describe the deployment at test time; they are not
-active resources now.
+Possible symptoms:
+- Peering connection is active.
+- Security groups appear correct.
+- Ping between private instances fails.
 
-## 9. What I learned
+Investigation:
+- Inspect route tables associated with the source and destination subnets.
+- Verify the destination VPC CIDR.
+- Verify that the route target is the correct peering connection.
 
--   How VPC and subnet CIDRs define network boundaries.
--   Why peering requires routes in both VPCs.
--   How to separate a public bastion from private EC2 instances.
--   How security groups affect SSH and ICMP traffic.
--   How to test forward and return paths using private IP addresses.
--   How a changed client public IP can affect bastion SSH access.
--   Why private keys and Terraform state must not be published.
--   Why lab resources should be destroyed after testing to control
-    costs.
+Useful command:
 
-## 10. Reproducing the lab
+```bash
+aws ec2 describe-route-tables \
+  --region ap-south-1
+```
 
-1.  Install Terraform and configure AWS CLI credentials for a dedicated
-    lab account.
+Expected resolution: Add the missing route to the appropriate route table on each side.
 
-2.  Review `main.tf`, the Region, CIDRs, instance types, key-pair setup,
-    security-group rules, and expected costs.
+**Scenario C — Security Group Blocking ICMP**
 
-3.  Initialise and validate:
+Possible symptoms:
+- SSH works.
+- Ping fails.
 
-    ``` bash
-    terraform init
-    terraform validate
-    terraform plan
-    ```
+Investigation:
+- Inspect inbound ICMP rules on the destination instance's security group.
+- Verify the source CIDR or source security group.
+- Check outbound rules where applicable.
 
-4.  Review the plan before creating resources:
+Useful command:
 
-    ``` bash
-    terraform apply
-    ```
+```bash
+aws ec2 describe-security-groups \
+  --region ap-south-1
+```
 
-5.  Run the connectivity/security tests and capture your own evidence.
+Expected resolution: Allow the required ICMP traffic from the intended source.
 
-6.  Remove resources when finished:
+**Scenario D — Overlapping VPC CIDR Blocks**
 
-    ``` bash
-    terraform destroy
-    ```
+Possible symptoms:
+- VPC Peering cannot be established between two VPCs.
+- AWS reports an overlapping CIDR error.
 
-**Before reproducing:** Confirm the current `main.tf` matches this
-design. Review the plan carefully and avoid applying the configuration
-unless you are prepared for possible AWS charges.
+Investigation:
+- Compare the IPv4 CIDR blocks of both VPCs.
+- Check for overlapping network ranges.
+
+Expected resolution: Redesign the VPC addressing plan with non-overlapping CIDR ranges before establishing peering.
+
+**Scenario E — SSH Connection Timeout to a Private EC2 Instance**
+
+Possible symptoms:
+- Bastion Host is reachable.
+- SSH to a private instance times out.
+
+Investigation:
+- Check the private instance's security group.
+- Verify that SSH is permitted from the Bastion Host.
+- Check subnet route tables and network ACLs.
+- Verify instance status and SSH service availability.
+
+Useful command on the Bastion Host:
+
+```bash
+ssh -i key.pem ec2-user@10.10.2.10
+```
+
+Expected resolution: Correct the access rules, network path, or SSH service configuration based on the identified cause.
+
+**Scenario F — Incorrect Return Routing**
+
+Possible symptoms:
+- Traffic appears to reach the destination.
+- Responses do not return successfully.
+
+Investigation:
+- Inspect the destination subnet's route table.
+- Verify the route back to the source VPC CIDR.
+- Check security groups and network ACLs.
+
+Expected resolution: Ensure that the return path is correctly configured.
+
+## 7. Security Considerations
+
+The following security principles were incorporated into the project design:
+
+- Used separate VPC CIDR ranges to avoid address overlap.
+- Kept application instances in private subnets.
+- Avoided assigning public IP addresses to application instances.
+- Restricted Bastion Host SSH access to an authorized source IP.
+- Used security groups to control inbound network traffic.
+- Used a Bastion Host for controlled administrative access.
+- Avoided exposing private application instances directly to the internet.
+
+**Important design limitation:** VPC Peering is non-transitive. A peered VPC cannot automatically use another VPC's peering connection to reach a third VPC.
+
+## 8. Infrastructure as Code — Terraform
+
+Terraform was used to provision and manage the AWS networking infrastructure.
+
+Main Terraform configuration:
+
+`main.tf`
+
+Deployment workflow:
+
+```bash
+terraform init
+terraform validate
+terraform plan
+terraform apply
+```
+
+Cleanup:
+
+```bash
+terraform destroy
+```
+
+Terraform helped make the infrastructure reproducible and reduced manual configuration work.
+
+## 9. Infrastructure Cleanup and Cost Control
+
+After completing the lab and connectivity verification, the Terraform-managed infrastructure was destroyed.
+
+**Cleanup evidence:**
+
+![Terraform Destroy Completed](<Screenshots/Cleanup verification — Terraform destroy completed.png>)
+
+The screenshot documents the cleanup operation. The AWS resources are not currently deployed as part of this lab.
+
+## 10. Key Learnings
+
+Through this project, I developed practical understanding of:
+
+- AWS VPC architecture and CIDR planning.
+- Public and private subnet configuration.
+- VPC Peering and private communication.
+- Route table configuration and return-path routing.
+- Security group configuration and traffic filtering.
+- Bastion Host access patterns.
+- SSH and ICMP connectivity testing.
+- Troubleshooting network connectivity issues.
+- Terraform-based infrastructure provisioning.
+- AWS resource cleanup and cost awareness.
+
+## 11. Future Improvements
+
+Potential improvements for a production-oriented extension:
+
+- Add VPC Flow Logs for network traffic visibility.
+- Integrate CloudWatch monitoring and alarms.
+- Use AWS Systems Manager Session Manager for administrative access.
+- Store Terraform state remotely with encryption and state locking.
+- Introduce automated infrastructure validation through CI/CD.
+- Evaluate AWS Transit Gateway for larger multi-VPC network architectures.
+
+These are proposed enhancements, not features currently implemented in this lab.
+
+## 12. Project Status
+
+**Implementation:** Completed
+
+**Connectivity validation:** Completed for the documented tests
+
+**Controlled ICMP troubleshooting:** Demonstrated
+
+**Additional troubleshooting scenarios:** Proposed for further practice
+
+**Infrastructure cleanup:** Completed
+
+## 13. Author
+
+**SK ASIF RAHEMAN**
+
+MCA Graduate | AWS Cloud & DevOps
+
+GitHub: [asifraheman2002](https://github.com/asifraheman2002)
+
+Project Repository: [AWS VPC Peering Lab](https://github.com/asifraheman2002/aws-vpc-peering-lab)
+
+---
+
+*This project was completed as a hands-on cloud networking learning exercise, with Terraform-based provisioning, AWS configuration, connectivity validation, troubleshooting practice, and infrastructure cleanup.*
